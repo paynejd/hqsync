@@ -8,6 +8,13 @@ function exception_error_handler($errno, $errstr, $errfile, $errline ) {
 }
 set_error_handler("exception_error_handler");
 
+/**
+ * Used to replace ugly characters in table names.
+ */
+function replaceUglyCharacters($subject) {
+	$table_name = str_replace(array('#','|','.'), '_', $subject);
+}
+
 
 /**
  * CURL constants for HqSyncFactory::fetchExportFromServer()
@@ -1148,9 +1155,14 @@ class HqSyncFactory
 
 
 		/*
+		 * Create the table name - removing ugly characters
+		 */
+		$table_name = replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename);
+
+
+		/*
 		 * Insert record into hqsync_table
 		 */
-		$table_name = $hqs->form_name . '.' . $hqs_csv->filename;
 		$hqs_table = new HqSyncTable(null, $hqs->hqsync_id, $hqs_csv->filename, $table_name, 1);
 		$sql = 'insert into "' . mysql_escape_string($this->hqsync_dbname) . '"."hqsync_table" ' . 
 				'(hqsync_id, filename, tablename) values (' .
