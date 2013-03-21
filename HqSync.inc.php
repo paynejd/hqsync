@@ -579,7 +579,7 @@ class HqSyncFactory
 	{
 		if ($this->debug) echo "\nLoading sync list...\n";
 
-
+ 
 		/*
 		 * Load hqsync and token from most recent import
 		 */
@@ -588,7 +588,8 @@ class HqSyncFactory
 					'select output_token ' . 
 					'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync_log l ' . 
 					'where l.hqsync_id = s.hqsync_id ' . 
-					'and sync_status = ' . HQSYNC_STATUS_SUCCESSFUL_IMPORT . ' ' .
+					'and ( sync_status = ' . HQSYNC_STATUS_SUCCESSFUL_IMPORT . 
+						' or sync_status = ' . HQSYNC_STATUS_EMPTY_EXPORT . ' ) ' . 
 					'order by sync_time desc limit 1' .
 				') last_token ' . 
 				'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync s ' . 
