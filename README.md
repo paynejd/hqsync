@@ -1,6 +1,4 @@
-hqsync
+CommCare HQSync
 ======
 
-CommCare HQ Sync
-
-Instructions for setup and use are in the /docs folder.
+HQSync is a PHP command line utility to synchronize forms from CommCare HQ domains to a mysql database.
