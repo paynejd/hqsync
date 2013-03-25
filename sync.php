@@ -20,8 +20,8 @@ require_once('HqSync.inc.php');
 
 	$default_debug      =  false;
 	$default_host       =  'localhost';
-	$default_uid        =  'hqsync';
-	$default_pwd        =  'hqdtree1';
+	$default_uid        =  'uid';
+	$default_pwd        =  'pwd';
 	$default_dbname     =  'hqsync';
 	$default_domain     =  null;
 	$default_form_name  =  null;
@@ -30,7 +30,8 @@ require_once('HqSync.inc.php');
  * Include any csv filenames that should not be imported here (e.g. '#.#.#export_tag.#.csv')
  */
 	$arr_csv_ignore_list = array(
-			'#|#export_tag|#.csv'
+			'#|#export_tag|#.csv',
+			'#|location_|#.csv'
 		);
 
 
