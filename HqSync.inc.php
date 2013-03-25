@@ -12,7 +12,7 @@ set_error_handler("exception_error_handler");
  * Used to replace ugly characters in table names.
  */
 function replaceUglyCharacters($subject) {
-	$table_name = str_replace(array('#','|','.'), '_', $subject);
+	return str_replace(array('#','|','.'), '', $subject);
 }
 
 
@@ -590,15 +590,36 @@ class HqSyncFactory
 		/*
 		 * Load hqsync and token from most recent import
 		 */
-		$sql =  'select s.*, ' . 
+		$sql =
+				'select s.*, ' . 
 				'(' .
 					'select output_token ' . 
 					'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync_log l ' . 
 					'where l.hqsync_id = s.hqsync_id ' . 
-					'and ( sync_status = ' . HQSYNC_STATUS_SUCCESSFUL_IMPORT . 
-						' or sync_status = ' . HQSYNC_STATUS_EMPTY_EXPORT . ' ) ' . 
-					'order by sync_time desc limit 1' .
-				') last_token ' . 
+					'and sync_status = ' . HQSYNC_STATUS_SUCCESSFUL_IMPORT .
+					' order by sync_time desc limit 1' .
+				') last_success_token, ' . 
+				'(' .
+					'select sync_time ' . 
+					'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync_log l ' . 
+					'where l.hqsync_id = s.hqsync_id ' . 
+					'and sync_status = ' . HQSYNC_STATUS_SUCCESSFUL_IMPORT .
+					' order by sync_time desc limit 1' .
+				') last_success_date, ' . 
+				'(' .
+					'select output_token ' . 
+					'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync_log l ' . 
+					'where l.hqsync_id = s.hqsync_id ' . 
+					'and sync_status = ' . HQSYNC_STATUS_EMPTY_EXPORT .
+					' order by sync_time desc limit 1' .
+				') last_empty_token, ' . 
+				'(' .
+					'select sync_time ' . 
+					'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync_log l ' . 
+					'where l.hqsync_id = s.hqsync_id ' . 
+					'and sync_status = ' . HQSYNC_STATUS_EMPTY_EXPORT .
+					' order by sync_time desc limit 1' .
+				') last_empty_date ' . 
 				'from "' . mysql_escape_string($this->hqsync_dbname) . '".hqsync s ' . 
 				'where s.active = 1';
 		if ($domain) $sql .= " and domain='" . mysql_escape_string($domain) . "'";
@@ -609,10 +630,28 @@ class HqSyncFactory
 		$arr_hqs = array();
 		$hqs = null;
 		$str_hqsync_id = '';
-		while ($s = mysql_fetch_assoc($rsc_hqsync)) {
+		while ($s = mysql_fetch_assoc($rsc_hqsync)) 
+		{
+			// Determine which token to use
+			$token = null;
+			if ($s['last_success_date'] && $s['last_success_token'] &&
+				$s['last_empty_date'  ] && $s['last_empty_token'  ]) 
+			{
+				if (strtotime($s['last_success_date']) > strtotime($s['last_empty_date'])) {
+					$token = $s['last_success_token'];
+				} else {
+					$token = $s['last_empty_token'];
+				}
+			} elseif ($s['last_success_token']) {
+				$token = $s['last_success_token'];
+			} elseif ($s['last_empty_token']) {
+				$token = $s['last_empty_token'];
+			}
+
+			// Create the hqsync object
 			$hqs = new HqSync($s['hqsync_id'], $this->root_path, $s['domain'], $s['dbname'], 
 					$s['url'], $s['form_name'], $s['uid'], $s['pwd'], $s['use_token'], 
-					$s['purge_before_import'], $s['last_token']);
+					$s['purge_before_import'], $token);
 			$arr_hqs[$s['hqsync_id']] = $hqs;
 			if ($str_hqsync_id) $str_hqsync_id .= ',';
 			$str_hqsync_id .= $s['hqsync_id'];
@@ -1013,7 +1052,7 @@ class HqSyncFactory
 		{
 			// Set table name for this csv
 			// TODO: Need better method for generating table name (should do it in a CsvFile Object)
-			$table_name = $hqs->form_name . '.' . $hqs_csv->filename;
+			$table_name = replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename);
 
 			// Throw an error if the table already exists
 			if ($this->doesDatabaseTableExist($hqs->dbname, $table_name)) {
@@ -1066,7 +1105,7 @@ class HqSyncFactory
 		 */
 		foreach ($hqs->getCsvFileArray() as $hqs_csv) 
 		{
-			$table_name = $hqs->form_name . '.' . $hqs_csv->filename;
+			$table_name = replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename);
 			$sql = 'drop table if exists "' . mysql_escape_string($hqs->dbname) . '"."' . 
 					mysql_escape_string($table_name) . '"';
 			if (!$this->execute_query($sql)) {
@@ -1124,22 +1163,15 @@ class HqSyncFactory
 	public function createTableFromCsv(HqSync &$hqs, HqSyncCsvFile &$hqs_csv) 
 	{
 		/*
-		 * Set table name
-		 * TODO: This needs a more reliable method for setting filenames.
+		 * Set table name - removing ugly characters
 		 */
-		$table_name = $hqs->form_name . '.' . $hqs_csv->filename;
-
-
-		/*
-		 * TODO: Automatically determine column types for each header 
-		 * NOTE: Currently defaulting to VARCHAR(250). Can be modified database level and it will 
-		 * not cause any issues with the next import, unless the data is incompatible with the 
-		 * new datatype.
-		 */
-
+		$table_name = replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename);
 
 		/*
 		 * Create the database table
+		 * NOTE: Currently defaulting to VARCHAR(250). Can be modified database level and it will 
+		 * not cause any issues with the next import, unless the data is incompatible with the 
+		 * new datatype.
 		 */
 		$sql_create_table = '';
 		foreach ($hqs_csv->getFields() as $field) {
@@ -1152,12 +1184,6 @@ class HqSyncFactory
 			trigger_error('Could not create table "' . $hqs->dbname . '"."' . $table_name . '". ' .
 				'Complete sql: ' . $sql_create_table, E_USER_ERROR);
 		}
-
-
-		/*
-		 * Create the table name - removing ugly characters
-		 */
-		$table_name = replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename);
 
 
 		/*
@@ -1214,19 +1240,19 @@ class HqSyncFactory
 		foreach ($hqs->getCsvFileArray() as $hqs_csv) 
 		{
 			$database  = mysql_escape_string($hqs->dbname);
-			$tablename = mysql_escape_string($hqs->form_name . '.' . $hqs_csv->filename);
+			$table_name = mysql_escape_string(replaceUglyCharacters($hqs->form_name . '_' . $hqs_csv->filename));
 			$sql = 'load data infile \'' . mysql_escape_string($hqs_csv->pathname) . '\' ' . 
-					'into table "' . $database . '"."' . $tablename . '" ' . 
+					'into table "' . $database . '"."' . $table_name . '" ' . 
 					'fields terminated by \',\' ' . 
 					'optionally enclosed by \'"\' ' .
 					'escaped by \'\\\\\' ' . 
 					'ignore 1 lines';
 			if (!$this->execute_query($sql)) {
-				trigger_error('Could not import data for \'' . $database . '\'.\'' . $tablename . 
+				trigger_error('Could not import data for \'' . $database . '\'.\'' . $table_name . 
 						'\' from ' . $hqs_csv->pathname, E_USER_ERROR);
 			}
 			$num_imported_rows = mysql_affected_rows($this->conn);
-			$hqs->log($tablename . ': ' . $num_imported_rows . ' rows imported');
+			$hqs->log($table_name . ': ' . $num_imported_rows . ' rows imported');
 		}
 	}
 
